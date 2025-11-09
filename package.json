@@ -1,0 +1,38 @@
+{
+  "name": "buildsight-collector",
+  "version": "0.0.3",
+  "description": "CLI do BuildSight para coleta automatizada de commits e métricas de repositórios.",
+  "main": "index.js",
+  "bin": {
+    "buildsight-collector": "./index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "buildsight",
+    "collector",
+    "git",
+    "ci",
+    "metrics"
+  ],
+  "author": "Marcos Oliveira <marcosoliveira.ti9@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dev-MarcosVinicius/buildsight-collector.git"
+  },
+  "files": [
+    "index.js"
+  ],
+  "engines": {
+    "node": ">=14"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "chalk": "^5.3.0",
+    "ora": "^8.0.0",
+    "simple-git": "^3.22.0"
+  }
+}
