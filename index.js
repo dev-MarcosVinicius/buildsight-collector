@@ -17,6 +17,12 @@ async function main() {
         process.exit(1);
     }
 
+    if (typeof token === 'string' && token.length < 200) {
+        console.log(chalk.red("❌ Token inválido: tamanho menor que 200 caracteres."));
+        console.log(chalk.yellow("Uso: npx buildsight-collector <token>"));
+        process.exit(1);
+    }
+
     console.log(chalk.cyan.bold("\n🔗 Iniciando BuildSight Collector..."));
 
     try {
