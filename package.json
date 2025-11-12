@@ -1,6 +1,6 @@
 {
   "name": "buildsight-collector",
-  "version": "0.0.4",
+  "version": "1.0.0",
   "description": "CLI do BuildSight para coleta automatizada de commits e métricas de repositórios.",
   "main": "index.js",
   "bin": {
