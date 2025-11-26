@@ -48,23 +48,26 @@ async function main() {
             console.log(chalk.gray(`Buscando commits desde: ${sinceDate.toISOString()}`));
             // Atualizar repositório antes de buscar commits
             try {
-                // Use spawn with stdio: 'inherit' so the user can interact (enter credentials) if git requests them.
-                spinner.start('Atualizando repositório (git pull)...');
+                spinner.start('Atualizando referências remotas (git fetch --all)...');
                 await new Promise((resolve, reject) => {
-                    const p = spawn('git', ['pull'], { cwd: repo.path, stdio: 'inherit' });
+                    const p = spawn('git', ['fetch', '--all'], {
+                        cwd: repo.path,
+                        stdio: 'inherit' // permite interação (senha, passphrase, etc.)
+                    });
                     p.on('error', (err) => reject(err));
                     p.on('close', (code) => {
                         if (code === 0) resolve();
-                        else reject(new Error(`git pull exited with code ${code}`));
+                        else reject(new Error(`git fetch --all exited with code ${code}`));
                     });
                 });
-                spinner.succeed('Repositório atualizado.');
-            } catch (pullErr) {
-                spinner.warn('Não foi possível atualizar o repositório (git pull). Usando dados locais.');
+                spinner.succeed('Referências remotas atualizadas.');
+            } catch (fetchErr) {
+                spinner.warn('Não foi possível atualizar referências remotas (git fetch --all). Usando dados locais.');
             }
 
             // --- 🔹 1. Commits detalhados ---
             const log = await git.log({
+                '--all': null,
                 '--since': sinceDate.toISOString(),
                 '--stat': null, // inclui dados de arquivos alterados
             });
