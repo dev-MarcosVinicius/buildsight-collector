@@ -5,6 +5,65 @@ import chalk from "chalk";
 import ora from "ora";
 import simpleGit from "simple-git";
 import { spawn } from 'child_process';
+import os from "os";
+import { execSync } from "child_process";
+
+function getCurrentCron() {
+    try {
+        return execSync("crontab -l").toString();
+    } catch {
+        return "";
+    }
+}
+
+function detectOS() {
+    const platform = os.platform();
+
+    if (platform === "linux") return "linux";
+    if (platform === "darwin") return "mac";
+    if (platform === "win32") return "windows";
+
+    return "unknown";
+}
+
+async function setupAutomaticRun(token, intervalMinutes) {
+    const platform = detectOS();
+    const cronLine = `*/${intervalMinutes} * * * * npx buildsight-collector ${token}`;
+
+    console.log(chalk.cyan("\n⚙ Configuração de execução automática detectada."));
+
+    if (platform === "linux" || platform === "mac") {
+        console.log(chalk.gray("➡ Sistema detected: Linux/Mac"));
+
+        try {
+            const current = getCurrentCron();
+            if (current.includes(cronLine)) {
+                console.log(chalk.yellow("⚠ Cron já configurada anteriormente."));
+                return;
+            }
+
+            execSync(`(crontab -l 2>/dev/null; echo "${cronLine}") | crontab -`);
+
+            console.log(chalk.green("✓ Cron adicionada com sucesso!"));
+        } catch (err) {
+            console.log(chalk.red("❌ Falha ao configurar cron:", err.message));
+        }
+    } else if (platform === "windows") {
+        console.log(chalk.gray("➡ Sistema detected: Windows"));
+
+        const taskName = "BuildSightCollector";
+        const taskCmd = `schtasks /Create /SC MINUTE /MO ${intervalMinutes} /TN "${taskName}" /TR "npx buildsight-collector ${token}" /F`;
+
+        try {
+            execSync(taskCmd);
+            console.log(chalk.green("✓ Tarefa agendada criada com sucesso!"));
+        } catch (err) {
+            console.log(chalk.red("❌ Falha ao criar tarefa agendada:", err.message));
+        }
+    } else {
+        console.log(chalk.red("❌ Sistema operacional não suportado para execução automática."));
+    }
+}
 
 const spinner = ora();
 
@@ -36,9 +95,17 @@ async function main() {
             process.exit(0);
         }
 
-        spinner.succeed(`Foram encontrados ${data.data.length} paths.`);
+        const paths = data?.data || [];
+        const autoRunEnabled = data?.autoRunEnabled ?? false;
+        const intervalMinutes = data?.intervalMinutes ?? 15;
 
-        for (const repo of data.data) {
+        if (autoRunEnabled) {
+            await setupAutomaticRun(token, intervalMinutes);
+        }
+
+        spinner.succeed(`Foram encontrados ${paths.length} paths.`);
+
+        for (const repo of paths) {
             console.log(chalk.blue(`\n📂 Processando repositório:`), chalk.white(repo.name));
             const git = simpleGit(repo.path);
             const DAYS_RANGE = repo.periodDays || 1;
