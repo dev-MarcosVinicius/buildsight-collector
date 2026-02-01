@@ -146,27 +146,103 @@ async function main() {
             // --- 🔹 3. Merges locais ---
             const merges = await git.log({ '--merges': null });
 
-            // --- 🔹 4. Arquivos mais modificados ---
+            // --- 🔹 4. Arquivos mais modificados + Code Churn + Hot Spots ---
             const fileChangeCounts = {};
+            const codeChurn = {}; // { file: { additions, deletions, commits, authors: Set } }
+            const hotSpots = {}; // { file: { totalChanges, bugFixCount, authors: Set, lastModified } }
+
             for (const commit of log.all) {
                 try {
+                    // Obter estatísticas detalhadas do commit (linhas +/-)
                     const show = await git.raw(['show', '--stat', '--oneline', commit.hash]);
-                    const files = Array.from(show.matchAll(/ ([^\s]+)\s+\|\s+\d+/g)).map(m => m[1]);
-                    for (const file of files) {
-                        fileChangeCounts[file] = (fileChangeCounts[file] || 0) + 1;
+                    const fileMatches = Array.from(show.matchAll(/ ([^\s]+)\s+\|\s+(\d+)/g));
+
+                    // Obter detalhes de adições/remoções por arquivo
+                    const numstat = await git.raw(['show', '--numstat', '--oneline', commit.hash]);
+                    const numstatLines = numstat.split('\n').slice(1).filter(line => line.trim());
+
+                    const isBugFix = /^fix|bug|hotfix|urgent|patch/i.test(commit.message);
+
+                    for (const line of numstatLines) {
+                        const match = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
+                        if (match) {
+                            const additions = match[1] === '-' ? 0 : parseInt(match[1], 10);
+                            const deletions = match[2] === '-' ? 0 : parseInt(match[2], 10);
+                            const file = match[3].trim();
+
+                            // Atualizar fileChangeCounts
+                            fileChangeCounts[file] = (fileChangeCounts[file] || 0) + 1;
+
+                            // Atualizar Code Churn
+                            if (!codeChurn[file]) {
+                                codeChurn[file] = {
+                                    additions: 0,
+                                    deletions: 0,
+                                    commits: 0,
+                                    authors: new Set()
+                                };
+                            }
+                            codeChurn[file].additions += additions;
+                            codeChurn[file].deletions += deletions;
+                            codeChurn[file].commits += 1;
+                            codeChurn[file].authors.add(commit.author_email);
+
+                            // Atualizar Hot Spots
+                            if (!hotSpots[file]) {
+                                hotSpots[file] = {
+                                    totalChanges: 0,
+                                    bugFixCount: 0,
+                                    authors: new Set(),
+                                    lastModified: commit.date
+                                };
+                            }
+                            hotSpots[file].totalChanges += 1;
+                            hotSpots[file].authors.add(commit.author_email);
+                            if (isBugFix) {
+                                hotSpots[file].bugFixCount += 1;
+                            }
+                            // Atualizar última modificação se mais recente
+                            if (new Date(commit.date) > new Date(hotSpots[file].lastModified)) {
+                                hotSpots[file].lastModified = commit.date;
+                            }
+                        }
                     }
                 } catch { }
             }
+
+            // Converter Sets para arrays e calcular métricas finais
+            const codeChurnData = Object.entries(codeChurn).map(([file, data]) => ({
+                file,
+                additions: data.additions,
+                deletions: data.deletions,
+                totalChurn: data.additions + data.deletions,
+                commits: data.commits,
+                churnRate: data.commits > 0 ? (data.additions + data.deletions) / data.commits : 0,
+                authors: Array.from(data.authors),
+                authorCount: data.authors.size
+            })).sort((a, b) => b.totalChurn - a.totalChurn);
+
+            const hotSpotsData = Object.entries(hotSpots).map(([file, data]) => ({
+                file,
+                totalChanges: data.totalChanges,
+                bugFixCount: data.bugFixCount,
+                bugFixRatio: data.totalChanges > 0 ? data.bugFixCount / data.totalChanges : 0,
+                authors: Array.from(data.authors),
+                authorCount: data.authors.size,
+                lastModified: data.lastModified,
+                // Score composto: frequência de mudanças + proporção de bug fixes + número de autores
+                hotSpotScore: (data.totalChanges * 0.4) + (data.bugFixCount * 0.4) + (data.authors.size * 0.2)
+            })).sort((a, b) => b.hotSpotScore - a.hotSpotScore);
 
             // --- 🔹 5. Montar dados crus por commit ---
             const commits = await Promise.all(
                 log.all.map(async (c) => {
                     const isMerge = c.message.startsWith("Merge");
-                    const isRevert = /revert:/i.test(c.message);
-                    const isFix = /^fix:/i.test(c.message);
-                    const isFeat = /^feat:/i.test(c.message);
-                    const isRefactor = /^refactor:/i.test(c.message);
-                    const isHotfix = /hotfix|urgent/i.test(c.message);
+                    const isRevert = /revert/i.test(c.message);
+                    const isFix = /^fix/i.test(c.message);
+                    const isFeat = /^(feat|feature)/i.test(c.message);
+                    const isRefactor = /^refactor/i.test(c.message);
+                    const isHotfix = /^(hotfix|urgent)/i.test(c.message);
 
                     let filesChanged = [];
                     try {
@@ -230,6 +306,8 @@ async function main() {
                             message: m.message,
                         })),
                         fileChangeCounts, // 🔥 arquivos mais alterados
+                        codeChurn: codeChurnData, // 🔄 detecção de code churn
+                        hotSpots: hotSpotsData, // 🔥 identificação de hot spots
                     },
                     commits: batch,
                 };
