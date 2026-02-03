@@ -265,7 +265,8 @@ async function selectBaseDirectory() {
 
         rl.question(chalk.white('Digite o diretório base para buscar repositórios (ou pressione ENTER para usar o padrão): '), (answer) => {
             rl.close();
-            const dir = answer.trim() || defaultDir;
+            const inputDir = answer.trim() || defaultDir;
+            const dir = path.resolve(inputDir); // Converte para path absoluto
 
             if (!fs.existsSync(dir)) {
                 console.log(chalk.red(`\n❌ Diretório não encontrado: ${dir}`));
@@ -278,8 +279,6 @@ async function selectBaseDirectory() {
 }
 
 async function configRepos(token) {
-    console.log(chalk.cyan.bold("\n🔧 BuildSight - Configuração de Repositórios\n"));
-
     // 1. Selecionar diretório base
     const baseDir = await selectBaseDirectory();
 
