@@ -7,6 +7,9 @@ import simpleGit from "simple-git";
 import { spawn } from 'child_process';
 import os from "os";
 import { execSync } from "child_process";
+import fs from "fs";
+import path from "path";
+import readline from "readline";
 
 function getCurrentCron() {
     try {
@@ -67,12 +70,330 @@ async function setupAutomaticRun(token, intervalMinutes) {
 
 const spinner = ora();
 
+// ============================================
+// CONFIG-REPOS: Configuração de repositórios
+// ============================================
+
+function findGitRepos(baseDir, maxDepth = 3, currentDepth = 0) {
+    const repos = [];
+
+    if (currentDepth > maxDepth) return repos;
+
+    try {
+        const entries = fs.readdirSync(baseDir, { withFileTypes: true });
+
+        // Verificar se o diretório atual é um repositório git
+        const hasGit = entries.some(e => e.isDirectory() && e.name === '.git');
+        if (hasGit) {
+            repos.push({
+                name: path.basename(baseDir),
+                path: baseDir
+            });
+            return repos; // Não procurar subdiretórios de um repo git
+        }
+
+        // Procurar em subdiretórios
+        for (const entry of entries) {
+            if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+                const subPath = path.join(baseDir, entry.name);
+                repos.push(...findGitRepos(subPath, maxDepth, currentDepth + 1));
+            }
+        }
+    } catch (err) {
+        // Ignorar erros de permissão
+    }
+
+    return repos;
+}
+
+function createCheckboxPrompt(items, selectedIndices) {
+    console.clear();
+    console.log(chalk.cyan.bold("\n🔧 BuildSight - Configuração de Repositórios\n"));
+    console.log(chalk.gray("Use as setas ↑↓ para navegar, ESPAÇO para selecionar/desmarcar"));
+    console.log(chalk.gray("Pressione ENTER para confirmar a seleção\n"));
+
+    items.forEach((item, index) => {
+        const isSelected = selectedIndices.has(index);
+        const checkbox = isSelected ? chalk.green('◉') : chalk.gray('○');
+        const cursor = item.isCursor ? chalk.cyan('❯ ') : '  ';
+        const text = isSelected ? chalk.green(item.label) : item.label;
+        console.log(`${cursor}${checkbox} ${text}`);
+    });
+
+    console.log(chalk.gray(`\n${selectedIndices.size} repositório(s) selecionado(s)`));
+}
+
+async function selectRepositories(repos) {
+    return new Promise((resolve) => {
+        if (repos.length === 0) {
+            resolve([]);
+            return;
+        }
+
+        const items = repos.map((repo, index) => ({
+            label: `${repo.name} (${repo.path})`,
+            value: repo,
+            isCursor: index === 0
+        }));
+
+        const selectedIndices = new Set();
+        let cursorIndex = 0;
+
+        readline.emitKeypressEvents(process.stdin);
+        if (process.stdin.isTTY) {
+            process.stdin.setRawMode(true);
+        }
+
+        const render = () => {
+            items.forEach((item, index) => {
+                item.isCursor = index === cursorIndex;
+            });
+            createCheckboxPrompt(items, selectedIndices);
+        };
+
+        render();
+
+        const onKeypress = (str, key) => {
+            if (key.name === 'up') {
+                cursorIndex = cursorIndex > 0 ? cursorIndex - 1 : items.length - 1;
+                render();
+            } else if (key.name === 'down') {
+                cursorIndex = cursorIndex < items.length - 1 ? cursorIndex + 1 : 0;
+                render();
+            } else if (key.name === 'space') {
+                if (selectedIndices.has(cursorIndex)) {
+                    selectedIndices.delete(cursorIndex);
+                } else {
+                    selectedIndices.add(cursorIndex);
+                }
+                render();
+            } else if (key.name === 'return') {
+                process.stdin.removeListener('keypress', onKeypress);
+                if (process.stdin.isTTY) {
+                    process.stdin.setRawMode(false);
+                }
+                console.clear();
+                const selected = Array.from(selectedIndices).map(i => items[i].value);
+                resolve(selected);
+            } else if (key.name === 'c' && key.ctrl) {
+                process.stdin.removeListener('keypress', onKeypress);
+                if (process.stdin.isTTY) {
+                    process.stdin.setRawMode(false);
+                }
+                console.log(chalk.yellow("\n\nOperação cancelada pelo usuário."));
+                process.exit(0);
+            }
+        };
+
+        process.stdin.on('keypress', onKeypress);
+        process.stdin.resume();
+    });
+}
+
+async function selectPeriod() {
+    return new Promise((resolve) => {
+        const options = [
+            { label: '24 horas (1 dia)', value: 1 },
+            { label: '7 dias', value: 7 },
+            { label: '15 dias', value: 15 }
+        ];
+
+        let cursorIndex = 0;
+
+        readline.emitKeypressEvents(process.stdin);
+        if (process.stdin.isTTY) {
+            process.stdin.setRawMode(true);
+        }
+
+        const render = () => {
+            console.clear();
+            console.log(chalk.cyan.bold("\n🔧 BuildSight - Configuração de Repositórios\n"));
+            console.log(chalk.white("Selecione o período de busca de commits:\n"));
+            console.log(chalk.gray("Use as setas ↑↓ para navegar, ENTER para confirmar\n"));
+
+            options.forEach((option, index) => {
+                const cursor = index === cursorIndex ? chalk.cyan('❯ ') : '  ';
+                const radio = index === cursorIndex ? chalk.cyan('●') : chalk.gray('○');
+                const text = index === cursorIndex ? chalk.cyan(option.label) : option.label;
+                console.log(`${cursor}${radio} ${text}`);
+            });
+        };
+
+        render();
+
+        const onKeypress = (str, key) => {
+            if (key.name === 'up') {
+                cursorIndex = cursorIndex > 0 ? cursorIndex - 1 : options.length - 1;
+                render();
+            } else if (key.name === 'down') {
+                cursorIndex = cursorIndex < options.length - 1 ? cursorIndex + 1 : 0;
+                render();
+            } else if (key.name === 'return') {
+                process.stdin.removeListener('keypress', onKeypress);
+                if (process.stdin.isTTY) {
+                    process.stdin.setRawMode(false);
+                }
+                console.clear();
+                resolve(options[cursorIndex].value);
+            } else if (key.name === 'c' && key.ctrl) {
+                process.stdin.removeListener('keypress', onKeypress);
+                if (process.stdin.isTTY) {
+                    process.stdin.setRawMode(false);
+                }
+                console.log(chalk.yellow("\n\nOperação cancelada pelo usuário."));
+                process.exit(0);
+            }
+        };
+
+        process.stdin.on('keypress', onKeypress);
+        process.stdin.resume();
+    });
+}
+
+async function selectBaseDirectory() {
+    return new Promise((resolve) => {
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
+
+        const homeDir = os.homedir();
+        const defaultDir = homeDir;
+
+        console.log(chalk.cyan.bold("\n🔧 BuildSight - Configuração de Repositórios\n"));
+        console.log(chalk.gray(`Diretório padrão: ${defaultDir}\n`));
+
+        rl.question(chalk.white('Digite o diretório base para buscar repositórios (ou pressione ENTER para usar o padrão): '), (answer) => {
+            rl.close();
+            const dir = answer.trim() || defaultDir;
+
+            if (!fs.existsSync(dir)) {
+                console.log(chalk.red(`\n❌ Diretório não encontrado: ${dir}`));
+                process.exit(1);
+            }
+
+            resolve(dir);
+        });
+    });
+}
+
+async function configRepos(token) {
+    console.log(chalk.cyan.bold("\n🔧 BuildSight - Configuração de Repositórios\n"));
+
+    // 1. Selecionar diretório base
+    const baseDir = await selectBaseDirectory();
+
+    // 2. Buscar repositórios git
+    console.clear();
+    spinner.start('Buscando repositórios git...');
+    const repos = findGitRepos(baseDir);
+    spinner.stop();
+
+    if (repos.length === 0) {
+        console.log(chalk.yellow(`\n⚠ Nenhum repositório git encontrado em: ${baseDir}`));
+        console.log(chalk.gray('Tente especificar um diretório diferente ou verifique se existem repositórios git.'));
+        process.exit(0);
+    }
+
+    console.log(chalk.green(`\n✓ Encontrados ${repos.length} repositórios git.\n`));
+    await new Promise(r => setTimeout(r, 1000));
+
+    // 3. Selecionar repositórios
+    const selectedRepos = await selectRepositories(repos);
+
+    if (selectedRepos.length === 0) {
+        console.log(chalk.yellow("\n⚠ Nenhum repositório selecionado. Operação cancelada."));
+        process.exit(0);
+    }
+
+    console.log(chalk.green(`\n✓ ${selectedRepos.length} repositório(s) selecionado(s).\n`));
+    await new Promise(r => setTimeout(r, 500));
+
+    // 4. Selecionar período
+    const periodDays = await selectPeriod();
+
+    console.log(chalk.green(`\n✓ Período selecionado: ${periodDays} dia(s).\n`));
+
+    // 5. Enviar para a API
+    console.log(chalk.cyan("\n📤 Enviando configurações para o BuildSight...\n"));
+
+    let successCount = 0;
+    let errorCount = 0;
+    let existingCount = 0;
+
+    for (const repo of selectedRepos) {
+        spinner.start(`Configurando ${repo.name}...`);
+
+        try {
+            const payload = {
+                token: token,
+                name: repo.name,
+                path: repo.path,
+                periodDays: periodDays
+            };
+
+            const response = await axios.post('https://buildsight.app/api/collector/paths', payload);
+
+            if (response.data?.message === 'already_exists') {
+                spinner.warn(`${repo.name} - Já configurado anteriormente.`);
+                existingCount++;
+            } else {
+                spinner.succeed(`${repo.name} - Configurado com sucesso!`);
+                successCount++;
+            }
+        } catch (err) {
+            const errorMessage = err.response?.data?.error || err.message;
+            spinner.fail(`${repo.name} - Erro: ${errorMessage}`);
+            errorCount++;
+        }
+    }
+
+    // 6. Resumo final
+    console.log(chalk.cyan.bold("\n📊 Resumo da Configuração:\n"));
+    console.log(chalk.green(`   ✓ Configurados com sucesso: ${successCount}`));
+    if (existingCount > 0) {
+        console.log(chalk.yellow(`   ⚠ Já existentes: ${existingCount}`));
+    }
+    if (errorCount > 0) {
+        console.log(chalk.red(`   ❌ Erros: ${errorCount}`));
+    }
+
+    console.log(chalk.cyan.bold("\n✅ Configuração concluída!"));
+    console.log(chalk.gray("\nAgora você pode executar a coleta com:"));
+    console.log(chalk.white(`   npx buildsight-collector <token>\n`));
+}
+
 async function main() {
-    const token = process.argv[2];
+    const arg1 = process.argv[2];
+    const arg2 = process.argv[3];
+
+    // Verificar se é o comando config-repos
+    if (arg1 === 'config-repos') {
+        const token = arg2;
+
+        if (!token) {
+            console.log(chalk.red("❌ Token de autenticação ausente."));
+            console.log(chalk.yellow("Uso: npx buildsight-collector config-repos <token>"));
+            process.exit(1);
+        }
+
+        if (typeof token === 'string' && token.length < 200) {
+            console.log(chalk.red("❌ Token inválido: tamanho menor que 200 caracteres."));
+            console.log(chalk.yellow("Uso: npx buildsight-collector config-repos <token>"));
+            process.exit(1);
+        }
+
+        await configRepos(token);
+        process.exit(0);
+    }
+
+    // Fluxo normal de coleta
+    const token = arg1;
 
     if (!token) {
         console.log(chalk.red("❌ Token de autenticação ausente."));
         console.log(chalk.yellow("Uso: npx buildsight-collector <token>"));
+        console.log(chalk.yellow("     npx buildsight-collector config-repos <token>"));
         process.exit(1);
     }
 
