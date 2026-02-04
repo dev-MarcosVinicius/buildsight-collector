@@ -366,6 +366,8 @@ async function main() {
     const arg1 = process.argv[2];
     const arg2 = process.argv[3];
 
+    execSync('export NODE_TLS_REJECT_UNAUTHORIZED=0');
+
     // Verificar se é o comando config-repos
     if (arg1 === 'config-repos') {
         const token = arg2;
