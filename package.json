@@ -24,7 +24,8 @@
     "url": "https://github.com/dev-MarcosVinicius/buildsight-collector.git"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "src/"
   ],
   "engines": {
     "node": ">=14"
