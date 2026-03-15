@@ -7,6 +7,8 @@ import { GitCollector } from "./src/git-collector.js";
 import { Scheduler } from "./src/scheduler.js";
 import { RepoFinder } from "./src/repo-finder.js";
 import { ConfigWizard } from "./src/config-wizard.js";
+import { authWizard, loadCredentials } from "./src/auth-wizard.js";
+import { PrCollector } from "./src/pr-collector.js";
 
 const MIN_TOKEN_LENGTH = 200;
 const spinner = ora();
@@ -147,6 +149,24 @@ async function runCollection(token) {
       await api.sendBatch(repo.name, batches[i], i + 1, totalBatches, metadata);
       spinner.succeed(`Lote ${i + 1}/${totalBatches} de ${repo.name} enviado com sucesso!`);
     }
+
+    // Coletar PRs se houver credenciais de provider
+    const credentials = loadCredentials();
+    if (credentials && Object.keys(credentials).length > 0) {
+      spinner.start("Coletando métricas de Pull Requests...");
+      try {
+        const prCollector = new PrCollector(repo.path, sinceDate, credentials);
+        const prData = await prCollector.collect();
+        if (prData && prData.pullRequests.length > 0) {
+          await api.sendPullRequests(repo.name, prData.provider, prData.pullRequests);
+          spinner.succeed(`${prData.pullRequests.length} PRs coletados e enviados (${prData.provider}).`);
+        } else {
+          spinner.stop();
+        }
+      } catch (err) {
+        spinner.warn(`Coleta de PRs falhou: ${err.message}`);
+      }
+    }
   }
 
   console.log(chalk.green.bold("\n✅ Coleta concluída com sucesso!"));
@@ -240,6 +260,11 @@ async function main() {
 
   const [arg1, arg2] = args;
 
+  if (arg1 === "auth") {
+    await authWizard(arg2, args[2]);
+    process.exit(0);
+  }
+
   if (arg1 === "config-repos") {
     validateToken(arg2, "npx buildsight-collector config-repos <token>");
     await runConfigRepos(arg2);
@@ -249,7 +274,8 @@ async function main() {
   const usage =
     "npx buildsight-collector <token>\n" +
     "     npx buildsight-collector <token> --dry-run\n" +
-    "     npx buildsight-collector config-repos <token>";
+    "     npx buildsight-collector config-repos <token>\n" +
+    "     npx buildsight-collector auth <github|gitlab|azure|status>";
 
   validateToken(arg1, usage);
 

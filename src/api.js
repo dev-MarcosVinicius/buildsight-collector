@@ -49,6 +49,16 @@ export class BuildSightApi {
     });
   }
 
+  async sendPullRequests(repoName, provider, pullRequests) {
+    if (this.dryRun) return;
+    await axios.post(`${BASE_URL}/api/collector/pull-requests`, {
+      token: this.token,
+      repoName,
+      provider,
+      pullRequests,
+    });
+  }
+
   prepareBatches(commits) {
     const totalBatches = Math.ceil(commits.length / BATCH_SIZE) || 1;
     const batches = Array.from({ length: totalBatches }, (_, i) =>

@@ -7,8 +7,8 @@ Roadmap de melhorias e novas features para expandir a coleta de métricas de des
 ## 1. Métricas Avançadas de Git
 
 ### 1.1 Análise de Código por Commit
-- [ ] Detecção de code churn (arquivos frequentemente reescritos)
-- [ ] Identificação de arquivos "hot spots" (alta frequência de bugs/mudanças)
+- [x] Detecção de code churn (arquivos frequentemente reescritos)
+- [x] Identificação de arquivos "hot spots" (alta frequência de bugs/mudanças)
 
 ### 1.2 Métricas de Colaboração
 - [ ] Co-autoria de commits (Co-authored-by)
@@ -133,7 +133,7 @@ Roadmap de melhorias e novas features para expandir a coleta de métricas de des
 
 ### 5.3 Segurança
 - [ ] Anonimização opcional de emails
-- [ ] Modo dry-run (ver dados sem enviar)
+- [x] Modo dry-run (ver dados sem enviar)
 - [ ] Logs de auditoria local
 
 ### 5.4 Resiliência
