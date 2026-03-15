@@ -66,12 +66,56 @@ O dry-run realiza as mesmas etapas da coleta normal — autenticação, leitura 
 ✅ Dry-run concluído. Nenhum dado foi gravado.
 ```
 
+### Autenticar com GitHub, GitLab ou Azure DevOps
+
+Conecta o collector ao seu provedor de Git para coletar métricas de Pull Requests.
+Usa o fluxo OAuth Device Flow — nenhuma senha é armazenada localmente.
+
+```bash
+npx buildsight-collector auth github
+npx buildsight-collector auth gitlab
+npx buildsight-collector auth azure
+```
+
+O comando exibe um código e uma URL. Acesse a URL, insira o código e o collector salvará o token automaticamente em `~/.buildsight/credentials.json`.
+
+### Ver status das conexões
+
+Exibe quais providers estão autenticados e quando foi feita a última autenticação.
+
+```bash
+npx buildsight-collector auth status
+```
+
+Exemplo de saída:
+
+```text
+  Status das conexões BuildSight:
+
+  ✓ github   autenticado em 14/03/2026, 10:23:45
+  ○ gitlab   não conectado
+  ○ azure    não conectado
+```
+
+### Desconectar um provider
+
+Remove as credenciais locais do provider especificado.
+
+```bash
+npx buildsight-collector auth logout github
+npx buildsight-collector auth logout gitlab
+npx buildsight-collector auth logout azure
+```
+
 ## Parâmetros
 
-| Parâmetro     | Descrição                                              |
-|---------------|--------------------------------------------------------|
-| `<token>`     | Token de autenticação gerado pelo BuildSight           |
-| `--dry-run`   | Simula a coleta sem gravar nada no banco de dados      |
+| Parâmetro                         | Descrição                                                    |
+|-----------------------------------|--------------------------------------------------------------|
+| `<token>`                         | Token de autenticação gerado pelo BuildSight                 |
+| `--dry-run`                       | Simula a coleta sem gravar nada no banco de dados            |
+| `auth <github\|gitlab\|azure>`    | Autentica com o provider para coletar métricas de PRs        |
+| `auth status`                     | Exibe o status de todas as conexões de providers             |
+| `auth logout <provider>`          | Remove as credenciais locais do provider especificado        |
 
 ## Requisitos
 
