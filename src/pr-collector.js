@@ -29,16 +29,30 @@ function extractAzureSlug(url) {
   return null;
 }
 
-function detectFromRemoteUrl(url) {
+function detectFromRemoteUrl(url, gitlabBaseUrl = null) {
   if (!url) return null;
   if (url.includes("github.com")) {
     return { provider: "github", slug: extractSlug(url) };
   }
+  if (url.includes("dev.azure.com") || url.includes("visualstudio.com")) {
+    return { provider: "azure", slug: extractAzureSlug(url) };
+  }
   if (url.includes("gitlab.com") || url.match(/gitlab\./)) {
     return { provider: "gitlab", slug: extractGitLabSlug(url) };
   }
-  if (url.includes("dev.azure.com") || url.includes("visualstudio.com")) {
-    return { provider: "azure", slug: extractAzureSlug(url) };
+  // On-premise GitLab: check if the remote URL hostname matches the stored baseUrl
+  if (gitlabBaseUrl) {
+    try {
+      const baseHostname = new URL(gitlabBaseUrl).hostname;
+      const remoteHostname = url.includes("://")
+        ? new URL(url).hostname
+        : url.split(":")[0].split("@").pop();
+      if (remoteHostname === baseHostname) {
+        return { provider: "gitlab", slug: extractGitLabSlug(url) };
+      }
+    } catch {
+      // ignore URL parse errors
+    }
   }
   return null;
 }
@@ -61,7 +75,8 @@ export class PrCollector {
       const origin = remotes.find((r) => r.name === "origin") ?? remotes[0];
       if (!origin) return null;
       const url = origin.refs.fetch || origin.refs.push;
-      return detectFromRemoteUrl(url);
+      const gitlabBaseUrl = this.credentials.gitlab?.baseUrl ?? null;
+      return detectFromRemoteUrl(url, gitlabBaseUrl);
     } catch {
       return null;
     }
@@ -148,12 +163,13 @@ export class PrCollector {
     const headers = { "PRIVATE-TOKEN": token };
     const encodedSlug = encodeURIComponent(slug);
     const since = this.sinceDate ? new Date(this.sinceDate).toISOString() : null;
+    const gitlabBase = (this.credentials.gitlab?.baseUrl ?? "https://gitlab.com").replace(/\/$/, "");
 
     const params = { state: "all", per_page: 100 };
     if (since) params.updated_after = since;
 
     const mrsRes = await axios.get(
-      `https://gitlab.com/api/v4/projects/${encodedSlug}/merge_requests`,
+      `${gitlabBase}/api/v4/projects/${encodedSlug}/merge_requests`,
       { headers, params }
     );
 
@@ -191,9 +207,10 @@ export class PrCollector {
 
   async _gitlabReviews(encodedSlug, iid, headers) {
     try {
+      const gitlabBase = (this.credentials.gitlab?.baseUrl ?? "https://gitlab.com").replace(/\/$/, "");
       const [approvalsRes, notesRes] = await Promise.all([
-        axios.get(`https://gitlab.com/api/v4/projects/${encodedSlug}/merge_requests/${iid}/approvals`, { headers }),
-        axios.get(`https://gitlab.com/api/v4/projects/${encodedSlug}/merge_requests/${iid}/notes?per_page=100`, { headers }),
+        axios.get(`${gitlabBase}/api/v4/projects/${encodedSlug}/merge_requests/${iid}/approvals`, { headers }),
+        axios.get(`${gitlabBase}/api/v4/projects/${encodedSlug}/merge_requests/${iid}/notes?per_page=100`, { headers }),
       ]);
 
       const reviews = [];
@@ -214,7 +231,7 @@ export class PrCollector {
   async _collectAzure(slugInfo, token) {
     if (!slugInfo || typeof slugInfo !== "object") return null;
     const { org, project, repo } = slugInfo;
-    const headers = { Authorization: `Bearer ${token}` };
+    const headers = { Authorization: `Basic ${Buffer.from(`:${token}`).toString("base64")}` };
 
     const prsRes = await axios.get(
       `https://dev.azure.com/${org}/${project}/_apis/git/repositories/${repo}/pullrequests?searchCriteria.status=all&api-version=7.1`,

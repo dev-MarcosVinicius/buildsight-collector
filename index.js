@@ -261,7 +261,9 @@ async function main() {
   const [arg1, arg2] = args;
 
   if (arg1 === "auth") {
-    await authWizard(arg2, args[2]);
+    const urlFlagIndex = args.indexOf("--url");
+    const authOptions = urlFlagIndex !== -1 ? { url: args[urlFlagIndex + 1] } : {};
+    await authWizard(arg2, args[2], authOptions);
     process.exit(0);
   }
 
