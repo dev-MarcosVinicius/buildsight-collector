@@ -33,7 +33,7 @@ export class Scheduler {
     const cronLine = `*/${this.intervalMinutes} * * * * npx buildsight-collector ${this.token}`;
 
     try {
-      const current = execSync("crontab -l 2>/dev/null").toString();
+      const current = execSync("crontab -l 2>/dev/null || true").toString();
       if (current.includes(cronLine)) {
         console.log(chalk.yellow("⚠ Cron já configurada anteriormente."));
         return;

@@ -152,6 +152,9 @@ async function runCollection(token) {
 
     // Coletar PRs se houver credenciais de provider
     const credentials = loadCredentials();
+    for (const provider of Object.keys(credentials)) {
+      await api.registerIntegration(provider);
+    }
     if (credentials && Object.keys(credentials).length > 0) {
       spinner.start("Coletando métricas de Pull Requests...");
       try {

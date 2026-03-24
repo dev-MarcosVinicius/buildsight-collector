@@ -49,6 +49,14 @@ export class BuildSightApi {
     });
   }
 
+  async registerIntegration(provider) {
+    try {
+      await axios.post(`${BASE_URL}/api/collector/integrations`, { token: this.token, provider });
+    } catch {
+      // não bloqueia a coleta se falhar
+    }
+  }
+
   async sendPullRequests(repoName, provider, pullRequests) {
     if (this.dryRun) return;
     await axios.post(`${BASE_URL}/api/collector/pull-requests`, {
